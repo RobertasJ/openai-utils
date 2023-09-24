@@ -1,151 +1,144 @@
-// #![allow(unused)]
+#![allow(dead_code)]
+#![feature(type_name_of_val)]
 
-// extern crate proc_macro;
-// use proc_macro::TokenStream;
-// use std::collections::HashMap;
-// use std::fmt::Display;
-// use std::result::Result;
-// use std::vec::Vec;
+mod chat_completion;
+mod chat_completion_delta;
+mod chat_completion_request;
 
-// use error::ClientError;
-// use openai_rust::chat::stream::ChatResponseEvent;
-// use openai_rust::chat::{ChatResponse, self};
-// use openai_rust::Client;
-// use openai_rust::futures_util::Stream;
-// use openai_rust::{chat::Message, models::Model};
-// use serde::{Deserialize, Serialize};
+use lazy_static::lazy_static;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+use std::{
+    any::type_name_of_val,
+    sync::{Arc, RwLock},
+};
 
-// mod error;
+use schemars::{schema_for, JsonSchema};
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
+pub use {
+    chat_completion::ChatCompletion as Chat,
+    chat_completion_delta::ChatCompletionDelta as ChatDelta,
+    chat_completion_request::ChatCompletionRequest as ChatRequest,
+    chat_completion_request::ChatCompletionRequestBuilder as ChatRequestBuilder,
+};
 
-// #[derive(Clone, Serialize, Deserialize)]
-// pub enum Engine {
-//     Gpt35Turbo,
-//     Gpt4,
-// }
+lazy_static! {
+    static ref OPENAI_API_KEY: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
+}
 
-// impl Display for Engine {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Engine::Gpt35Turbo => write!(f, "gpt-3.5-turbo"),
-//             Engine::Gpt4 => write!(f, "gpt-4"),
-//         }
-//     }
-// }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub role: String,
 
-// pub enum Role {
-//     User,
-//     Assistant,
-//     System,
-// }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 
-// impl Display for Role {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Role::User => write!(f, "user"),
-//             Role::Assistant => write!(f, "assistant"),
-//             Role::System => write!(f, "system"),
-//         }
-//     }
-// }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 
-// type SystemMessage = fn(ctx: HashMap<String, String>) -> String;
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_call: Option<FunctionCall>,
+}
 
-// #[derive(Serialize, Deserialize, Default)]
-// pub struct AiModel<T> {
-//     ctx: HashMap<String, String>,
-//     #[serde(skip)]
-//     system_message: Option<SystemMessage>,
-//     messages: Vec<Message>,
-//     model_type: Option<Engine>,
-//     #[serde(skip)]
-//     client: Option<Client>,
-//     temperature: f32,
-//     phantomdata: std::marker::PhantomData<T>,
-// }
+impl Message {
+    pub fn new(role: String) -> Self {
+        Self {
+            role,
+            content: None,
+            name: None,
+            function_call: None,
+        }
+    }
 
-// impl<T> AiModel<T> {
-//     fn with_key(key: &str) -> Self<> {
-//         Self {
-//             ctx: HashMap::new(),
-//             system_message: None,
-//             messages: Vec::new(),
-//             model_type: None,
-//             client: Some(Client::new(key)),
-//             temperature: 0.0,
-//             phantomdata: std::marker::PhantomData,
-//         }
-//     }
-// }
+    pub fn with_content(mut self, content: String) -> Self {
+        self.content = Some(content);
+        self
+    }
 
-// struct Authed;
-// struct Unauthed;
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+}
 
-// impl<Authed> AiModel<Authed> {
-//     pub fn add_message(&mut self, content: impl Into<String>, role: Role) {
-//         self.messages.push(Message {
-//             role: role.to_string(),
-//             content: content.into(),
-//         });
-//     }
-//     /// add any context you want to use when making the system message with the context function
-//     pub fn system_message(&mut self, content: fn(ctx: HashMap<String, String>) -> String) {
-//         self.system_message = Some(content);
-//     }
-    
-//     pub fn context(&mut self, key: impl Into<String>, value: impl Into<String>) {
-//         let key = key.into();
-//         let value = value.into();
-        
-//         self.ctx.insert(key, value);
-//     }
-    
-//     pub fn engine(&mut self, model_type: Engine) {
-//         self.model_type = Some(model_type);
-//     }
-    
-//     pub async fn create_chat(&mut self) -> anyhow::Result<ChatResponse> {
-//         let client = self.client.as_ref().ok_or(ClientError::Client)?;
-//         let mut messages = self.messages.clone();
-//         if let Some(system_message) = &mut self.system_message {
-//             messages.push(Message {
-//                 role: Role::System.to_string(),
-//                 content: system_message(self.ctx.clone()),
-//             });
-//         }
-        
-//         let model = self.model_type.clone().ok_or(ClientError::Model)?.to_string();
-        
-//         let mut args = chat::ChatArguments::new(model, messages);
-        
-//         args.temperature = Some(self.temperature);
-        
-//         let response = client.create_chat(args).await?;
-//         Ok(response)
-//     }
-    
-//     pub async fn create_chat_stream(&mut self) -> 
-//     anyhow::Result<impl Stream<Item = Result<Vec<ChatResponseEvent>, anyhow::Error>>> {
-//         let client = self.client.as_ref().ok_or(ClientError::Client)?;
-//         let mut messages = self.messages.clone();
-//         if let Some(system_message) = &mut self.system_message {
-//             messages.push(Message {
-//                 role: Role::System.to_string(),
-//                 content: system_message(self.ctx.clone()),
-//             });
-//         }
-        
-//         let model = self.model_type.clone().ok_or(ClientError::Model)?.to_string();
-        
-//         let mut args = chat::ChatArguments::new(model, messages);
-        
-//         args.temperature = Some(self.temperature);
-        
-//         let response = client.create_chat_stream(args).await?;
-//         Ok(response)
-//     }
-    
-//     fn temperature(&mut self, temperature: f32) {
-//         self.temperature = temperature;
-//     }
-    
-// }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Function {
+    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub parameters: Value,
+}
+
+impl Function {
+    pub fn from<FunctionArgs, Func, T>(function: Func) -> Self
+    where
+        FunctionArgs: JsonSchema,
+        Func: Fn(FunctionArgs) -> T + 'static,
+    {
+        let schema = schema_for!(FunctionArgs);
+        let fn_type_name = type_name_of_val(&function);
+        let parameters = serde_json::to_value(schema)
+            .unwrap_or_else(|_| panic!("Failed to serialize schema for function {}", fn_type_name));
+
+        let fn_name = fn_type_name.split("::").last().unwrap_or("");
+        Self {
+            name: fn_name.to_string(),
+            description: match parameters.get("description") {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            },
+            parameters,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Choice {
+    pub index: i64,
+    pub message: Message,
+    pub finish_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkChoice {
+    pub index: i64,
+    pub delta: Delta,
+
+    #[serde(default)]
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Delta {
+    pub role: Option<String>,
+
+    pub content: Option<String>,
+
+    pub function_call: Option<FunctionCallDelta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCallDelta {
+    pub name: Option<String>,
+    pub arguments: Option<Value>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
+}
+
+pub fn api_key(api_key: String) {
+    let mut key = OPENAI_API_KEY.write().unwrap();
+    *key = Some(api_key);
+}
