@@ -1,9 +1,12 @@
+use crate::error::ApiErrorWrapper;
 use crate::{Chat, ChatDelta, OPENAI_API_KEY};
 use crate::{Function, Message};
 use futures_util::StreamExt;
+use log::{debug, trace};
 use reqwest::Method;
 use reqwest_eventsource::{Event, EventSource, RequestBuilderExt};
 use schemars::JsonSchema;
+use serde::Deserialize;
 use std::{collections::HashMap, vec};
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -142,8 +145,7 @@ impl ChatCompletionRequestBuilder {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn create(&self) -> Chat {
-
+    pub async fn create(&self) -> anyhow::Result<Chat> {
         let api_key = OPENAI_API_KEY.read().unwrap();
         let req = reqwest::Client::new()
             .post("https://api.openai.com/v1/chat/completions")
@@ -151,27 +153,27 @@ impl ChatCompletionRequestBuilder {
             .bearer_auth((*api_key).clone().unwrap())
             .header("Content-Type", "application/json")
             .send()
-            .await
-            .unwrap();
+            .await?;
 
-        let res = req.text().await.unwrap();
+        let res = req.text().await?;
 
-        serde_json::from_str::<Chat>(&res).unwrap()
+        serialize(&res)
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn create_stream(&self) -> Receiver<ChatDelta> {
+    pub async fn create_stream(&self) -> anyhow::Result<Receiver<anyhow::Result<ChatDelta>>> {
         let lock = OPENAI_API_KEY.read().unwrap();
         let api_key = (*lock).clone().unwrap();
 
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(64);
 
-        let es = reqwest::Client::new().request(Method::POST, "https://api.openai.com/v1/chat/completions")
+        let es = reqwest::Client::new()
+            .request(Method::POST, "https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(true))
             .bearer_auth(api_key)
-            .eventsource().unwrap();
+            .eventsource()?;
         tokio::spawn(forward_stream(es, tx));
-        rx
+        Ok(rx)
     }
 
     // builder part
@@ -302,16 +304,38 @@ impl ChatCompletionRequestBuilder {
     }
 }
 
-async fn forward_stream(mut es: EventSource, tx: mpsc::Sender<ChatDelta>) {
+fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> anyhow::Result<T> {
+    debug!("response: {}", res);
+    match serde_json::from_str::<T>(res) {
+        Ok(chat) => Ok(chat),
+        Err(_) => {
+            let err =
+                serde_json::from_str::<ApiErrorWrapper>(res).unwrap_or_else(|_| panic!("{}", res));
+            Err(err.error.into())
+        }
+    }
+}
+
+async fn forward_stream(
+    mut es: EventSource,
+    tx: mpsc::Sender<anyhow::Result<ChatDelta>>,
+) -> anyhow::Result<()> {
     while let Some(event) = es.next().await {
-        let event = event.unwrap();
+        let event = match event {
+            Ok(event) => event,
+            Err(err) => {
+                tx.send(Err(err.into())).await?;
+                break;
+            }
+        };
         if let Event::Message(message) = event {
             if message.data == "[DONE]" {
                 break;
             }
-            println!("{}", message.data);
-            let chat = serde_json::from_str(&message.data).unwrap();
-            tx.send(chat).await.unwrap();
+            let chat: anyhow::Result<ChatDelta> = serialize(&message.data);
+            tx.send(chat).await?;
         }
     }
+
+    Ok(())
 }

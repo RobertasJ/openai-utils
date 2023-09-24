@@ -4,6 +4,7 @@
 mod chat_completion;
 mod chat_completion_delta;
 mod chat_completion_request;
+mod error;
 
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
