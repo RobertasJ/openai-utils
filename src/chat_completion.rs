@@ -12,3 +12,4 @@ pub struct ChatCompletion {
     pub choices: Vec<Choice>,
     pub usage: Usage,
 }
+

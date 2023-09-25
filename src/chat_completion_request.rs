@@ -1,8 +1,10 @@
+use crate::chat_completion_delta::forward_stream;
+use crate::{Delta, DeltaReceiver};
 use crate::error::ApiErrorWrapper;
 use crate::{Chat, ChatDelta, OPENAI_API_KEY};
 use crate::{Function, Message};
 use futures_util::StreamExt;
-use log::{debug, trace};
+use log::debug;
 use reqwest::Method;
 use reqwest_eventsource::{Event, EventSource, RequestBuilderExt};
 use schemars::JsonSchema;
@@ -161,7 +163,7 @@ impl ChatCompletionRequestBuilder {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn create_stream(&self) -> anyhow::Result<Receiver<anyhow::Result<ChatDelta>>> {
+    pub async fn create_stream(&self) -> anyhow::Result<DeltaReceiver> {
         let lock = OPENAI_API_KEY.read().unwrap();
         let api_key = (*lock).clone().unwrap();
 
@@ -173,14 +175,16 @@ impl ChatCompletionRequestBuilder {
             .bearer_auth(api_key)
             .eventsource()?;
         tokio::spawn(forward_stream(es, tx));
-        Ok(rx)
+        
+        
+        Ok(DeltaReceiver::from(rx, &self))
     }
 
     // builder part
 
-    pub fn new(model: String) -> Self {
+    pub fn new(model: &str) -> Self {
         Self {
-            model,
+            model: model.to_string(),
             system_message: None,
             messages: vec![],
             functions: None,
@@ -197,8 +201,9 @@ impl ChatCompletionRequestBuilder {
         }
     }
 
-    pub fn with_system_message(mut self, system_message: String) -> Self {
-        self.system_message = Some(Message::new("system".to_string()).with_content(system_message));
+    pub fn with_system_message(mut self, system_message: &str) -> Self {
+        self.system_message =
+            Some(Message::new("system").with_content(system_message));
         self
     }
 
@@ -304,7 +309,7 @@ impl ChatCompletionRequestBuilder {
     }
 }
 
-fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> anyhow::Result<T> {
+pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> anyhow::Result<T> {
     debug!("response: {}", res);
     match serde_json::from_str::<T>(res) {
         Ok(chat) => Ok(chat),
@@ -316,26 +321,4 @@ fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> anyhow::Result<T> {
     }
 }
 
-async fn forward_stream(
-    mut es: EventSource,
-    tx: mpsc::Sender<anyhow::Result<ChatDelta>>,
-) -> anyhow::Result<()> {
-    while let Some(event) = es.next().await {
-        let event = match event {
-            Ok(event) => event,
-            Err(err) => {
-                tx.send(Err(err.into())).await?;
-                break;
-            }
-        };
-        if let Event::Message(message) = event {
-            if message.data == "[DONE]" {
-                break;
-            }
-            let chat: anyhow::Result<ChatDelta> = serialize(&message.data);
-            tx.send(chat).await?;
-        }
-    }
 
-    Ok(())
-}

@@ -20,6 +20,7 @@ use serde_json::Value;
 pub use {
     chat_completion::ChatCompletion as Chat,
     chat_completion_delta::ChatCompletionDelta as ChatDelta,
+    chat_completion_delta::DeltaReceiver as DeltaReceiver,
     chat_completion_request::ChatCompletionRequest as ChatRequest,
     chat_completion_request::ChatCompletionRequestBuilder as ChatRequestBuilder,
 };
@@ -43,22 +44,22 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn new(role: String) -> Self {
+    pub fn new(role: &str) -> Self {
         Self {
-            role,
+            role: role.to_string(),
             content: None,
             name: None,
             function_call: None,
         }
     }
 
-    pub fn with_content(mut self, content: String) -> Self {
-        self.content = Some(content);
+    pub fn with_content(mut self, content: &str) -> Self {
+        self.content = Some(content.to_string());
         self
     }
 
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
         self
     }
 }
@@ -109,7 +110,7 @@ pub struct Choice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkChoice {
+pub struct ChoiceDelta {
     pub index: i64,
     pub delta: Delta,
 
@@ -129,7 +130,7 @@ pub struct Delta {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCallDelta {
     pub name: Option<String>,
-    pub arguments: Option<Value>,
+    pub arguments: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
