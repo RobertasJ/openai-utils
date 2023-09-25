@@ -40,18 +40,20 @@ impl<'a> DeltaReceiver<'a> {
     }
     
     // dont kill me for this type
-    pub async fn receive(&mut self, choice_index: i64) -> anyhow::Result<Option<Option<ChatCompletionDelta>>> {
-        if let Some(delta) = self.receiver.recv().await {
-            let delta = delta?;
-            self.deltas.push(delta.clone());
-            for choice in &delta.choices {
-                if choice.index == choice_index {
-                    return Ok(Some(Some(delta)));
+    pub async fn receive(&mut self, choice_index: i64) -> anyhow::Result<Option<ChatCompletionDelta>> {
+        
+        loop {
+            if let Some(delta) = self.receiver.recv().await {
+                let delta = delta?;
+                self.deltas.push(delta.clone());
+                for choice in &delta.choices {
+                    if choice.index == choice_index {
+                        return Ok(Some(delta));
+                    }
                 }
+            } else {
+                return Ok(None);
             }
-            Ok(Some(None))
-        } else {
-            Ok(None)
         }
     }
     
@@ -84,7 +86,7 @@ impl<'a> DeltaReceiver<'a> {
             choices_map.entry(choice.index).or_default().push(choice);
         });
 
-        let mut choices: Vec<Choice> = choices_map
+        let choices: Vec<Choice> = choices_map
             .iter()
             .map(|(i, choices)| {
                 let index = *i;

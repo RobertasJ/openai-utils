@@ -1,16 +1,15 @@
 use crate::chat_completion_delta::forward_stream;
-use crate::{Delta, DeltaReceiver};
+use crate::DeltaReceiver;
 use crate::error::ApiErrorWrapper;
-use crate::{Chat, ChatDelta, OPENAI_API_KEY};
+use crate::{Chat, OPENAI_API_KEY};
 use crate::{Function, Message};
-use futures_util::StreamExt;
 use log::debug;
 use reqwest::Method;
-use reqwest_eventsource::{Event, EventSource, RequestBuilderExt};
+use reqwest_eventsource::RequestBuilderExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::{collections::HashMap, vec};
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct ChatCompletionRequest {
@@ -177,7 +176,7 @@ impl ChatCompletionRequestBuilder {
         tokio::spawn(forward_stream(es, tx));
         
         
-        Ok(DeltaReceiver::from(rx, &self))
+        Ok(DeltaReceiver::from(rx, self))
     }
 
     // builder part
