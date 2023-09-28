@@ -221,8 +221,8 @@ impl ChatCompletionRequestBuilder {
         self
     }
 
-    pub fn with_function_call(mut self, function_call: String) -> Self {
-        self.function_call = Some(function_call);
+    pub fn with_function_call(mut self, function_call: &str) -> Self {
+        self.function_call = Some(function_call.to_string());
         self
     }
 

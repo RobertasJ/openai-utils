@@ -39,7 +39,6 @@ impl<'a> DeltaReceiver<'a> {
         }
     }
     
-    // dont kill me for this type
     pub async fn receive(&mut self, choice_index: i64) -> anyhow::Result<Option<ChatCompletionDelta>> {
         
         loop {
@@ -48,7 +47,27 @@ impl<'a> DeltaReceiver<'a> {
                 self.deltas.push(delta.clone());
                 for choice in &delta.choices {
                     if choice.index == choice_index {
-                        return Ok(Some(delta));
+                        continue;
+                    }
+                    return Ok(Some(delta));
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+    }
+    
+    pub async fn receive_content(&mut self, choice_index: i64) -> anyhow::Result<Option<String>> {
+        loop {
+            if let Some(delta) = self.receiver.recv().await {
+                let delta = delta?;
+                self.deltas.push(delta.clone());
+                for choice in &delta.choices {
+                    if choice.index != choice_index {
+                        continue;
+                    }
+                    if let Some(content) = &choice.delta.content {
+                        return Ok(Some(content.clone()));
                     }
                 }
             } else {
@@ -141,7 +160,7 @@ impl<'a> DeltaReceiver<'a> {
                         function_call: match function_call {
                             true => Some(FunctionCall {
                                 name: funtion_call_name.unwrap(),
-                                arguments: serde_json::from_str(&arguments.unwrap()).unwrap(),
+                                arguments: arguments.unwrap(),
                             }),
                             false => None,
                         },

@@ -67,7 +67,7 @@ impl Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
     pub name: String,
-    pub arguments: Value,
+    pub arguments: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,4 +143,10 @@ pub struct Usage {
 pub fn api_key(api_key: String) {
     let mut key = OPENAI_API_KEY.write().unwrap();
     *key = Some(api_key);
+}
+
+#[derive(Default, Debug, Clone, JsonSchema)]
+#[schemars(description = "this function takes no arguments")]
+pub struct NoArgs {
+    _unused: (),
 }
