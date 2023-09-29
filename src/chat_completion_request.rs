@@ -162,7 +162,7 @@ impl ChatCompletionRequestBuilder {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn create_stream(&self) -> anyhow::Result<DeltaReceiver> {
+    pub fn create_stream(&self) -> anyhow::Result<DeltaReceiver> {
         let lock = OPENAI_API_KEY.read().unwrap();
         let api_key = (*lock).clone().unwrap();
 
