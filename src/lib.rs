@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 #![feature(type_name_of_val)]
+#![feature(associated_type_defaults)]
+#![feature(async_fn_in_trait)]
+#![allow(async_fn_in_trait)]
 
 mod chat_completion;
 mod chat_completion_delta;
@@ -19,10 +22,9 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 pub use {
     chat_completion::ChatCompletion as Chat,
-    chat_completion_delta::ChatCompletionDelta as ChatDelta,
-    chat_completion_delta::DeltaReceiver as DeltaReceiver,
+    chat_completion_delta::ChatCompletionDelta as ChatDelta, chat_completion_delta::DeltaReceiver,
     chat_completion_request::ChatCompletionRequest as ChatRequest,
-    chat_completion_request::ChatCompletionRequestBuilder as ChatRequestBuilder,
+    chat_completion_request::AiAgent as AiAgent,
 };
 
 lazy_static! {
@@ -44,22 +46,22 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn new(role: &str) -> Self {
+    pub fn new(role: impl Into<String>) -> Self {
         Self {
-            role: role.to_string(),
+            role: role.into(),
             content: None,
             name: None,
             function_call: None,
         }
     }
 
-    pub fn with_content(mut self, content: &str) -> Self {
-        self.content = Some(content.to_string());
+    pub fn with_content(mut self, content: impl Into<String>) -> Self {
+        self.content = Some(content.into());
         self
     }
 
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.name = Some(name.to_string());
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
         self
     }
 }
@@ -149,4 +151,37 @@ pub fn api_key(api_key: String) {
 #[schemars(description = "this function takes no arguments")]
 pub struct NoArgs {
     _unused: (),
+}
+
+pub trait Agent: Default {
+    type Input;
+    type Output;
+
+    async fn compute(&mut self, input: Self::Input) -> Self::Output;
+}
+
+pub trait Memoized {
+    type Output: Clone;
+
+    fn field(&mut self) -> Option<&mut Self::Output>;
+}
+
+pub trait MemoizedAgent: Memoized {
+    type Input;
+
+    async fn compute(&mut self, input: Self::Input) -> Self::Output {
+        if let Some(memo) = self.field() {
+            memo.clone()
+        } else {
+            let res = self.computation(input).await;
+
+            if let Some(memo) = self.field() {
+                *memo = res.clone();
+            }
+
+            res
+        }
+    }
+
+    async fn computation(&mut self, input: Self::Input) -> Self::Output;
 }

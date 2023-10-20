@@ -1,5 +1,5 @@
 [package]
-name = "ai-utils"
+name = "openai-utils"
 version = "0.1.0"
 edition = "2021"
 

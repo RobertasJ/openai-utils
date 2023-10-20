@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::{ChatDelta, ChatRequestBuilder, Choice, FunctionCall, Message};
+use crate::{ChatDelta, AiAgent, Choice, FunctionCall, Message};
 use futures_util::StreamExt;
 use reqwest_eventsource::Event;
 
@@ -11,6 +11,7 @@ use crate::{Chat, ChoiceDelta};
 use reqwest_eventsource::EventSource;
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
+use crate::error::ApiResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
@@ -22,15 +23,15 @@ pub struct ChatCompletionDelta {
 }
 
 pub struct DeltaReceiver<'a> {
-    pub receiver: Receiver<anyhow::Result<ChatCompletionDelta>>,
-    pub builder: &'a ChatRequestBuilder,
+    pub receiver: Receiver<ApiResult<ChatDelta>>,
+    pub builder: &'a AiAgent,
     pub deltas: Vec<ChatCompletionDelta>,
 }
 
 impl<'a> DeltaReceiver<'a> {
     pub fn from(
-        receiver: Receiver<anyhow::Result<ChatCompletionDelta>>,
-        builder: &'a ChatRequestBuilder,
+        receiver: Receiver<ApiResult<ChatDelta>>,
+        builder: &'a AiAgent,
     ) -> Self {
         Self {
             receiver,
@@ -111,11 +112,11 @@ impl<'a> DeltaReceiver<'a> {
                 let index = *i;
                 let mut finish_reason: String = Default::default();
                 // message part
-                let mut role: Option<String> = Option::None;
-                let mut content: Option<String> = Option::None;
+                let mut role: Option<String> = None;
+                let mut content: Option<String> = None;
                 let mut function_call = false;
-                let mut funtion_call_name: Option<String> = Option::None;
-                let mut arguments: Option<String> = Option::None;
+                let mut function_call_name: Option<String> = None;
+                let mut arguments: Option<String> = None;
 
                 choices.iter().for_each(|choice| {
                     if let Some(reason) = &choice.finish_reason {
@@ -137,7 +138,7 @@ impl<'a> DeltaReceiver<'a> {
                     if let Some(call) = &choice.delta.function_call {
                         function_call = true;
                         if let Some(name) = &call.name {
-                            funtion_call_name = Some(name.clone());
+                            function_call_name = Some(name.clone());
                         }
 
                         if let Some(args) = &call.arguments {
@@ -159,7 +160,7 @@ impl<'a> DeltaReceiver<'a> {
                         name: None,
                         function_call: match function_call {
                             true => Some(FunctionCall {
-                                name: funtion_call_name.unwrap(),
+                                name: function_call_name.unwrap(),
                                 arguments: arguments.unwrap(),
                             }),
                             false => None,
@@ -190,16 +191,15 @@ impl<'a> DeltaReceiver<'a> {
 
 pub async fn forward_stream(
     mut es: EventSource,
-    tx: Sender<anyhow::Result<ChatDelta>>,
+    tx: Sender<ApiResult<ChatDelta>>,
 ) -> anyhow::Result<()> {
     // Process each event from the EventSource
     while let Some(event) = es.next().await {
         // Handle errors in the event
         let event = match event {
             Ok(event) => event,
-            Err(err) => {
-                tx.send(Err(err.into())).await?;
-                return Ok(());
+            Err(_err) => {
+                panic!("{_err:#?}")
             }
         };
 
@@ -211,7 +211,7 @@ pub async fn forward_stream(
             }
 
             // Serialize the message data and send it
-            let chat: anyhow::Result<ChatDelta> = serialize(&message.data);
+            let chat = serialize(&message.data);
             tx.send(chat).await?;
         }
     }

@@ -1,3 +1,4 @@
+use crate::error::ApiResult;
 use crate::chat_completion_delta::forward_stream;
 use crate::DeltaReceiver;
 use crate::error::ApiErrorWrapper;
@@ -29,7 +30,7 @@ pub struct ChatCompletionRequest {
     pub top_p: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub n: Option<i64>,
+    pub n: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
@@ -38,7 +39,7 @@ pub struct ChatCompletionRequest {
     pub stop: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i64>,
+    pub max_tokens: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f64>,
@@ -75,7 +76,7 @@ impl ChatCompletionRequest {
 }
 
 #[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct ChatCompletionRequestBuilder {
+pub struct AiAgent {
     pub model: String,
 
     pub system_message: Option<Message>,
@@ -95,13 +96,13 @@ pub struct ChatCompletionRequestBuilder {
     pub top_p: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub n: Option<i64>,
+    pub n: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i64>,
+    pub max_tokens: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f64>,
@@ -116,12 +117,12 @@ pub struct ChatCompletionRequestBuilder {
     pub user: Option<String>,
 }
 
-impl ChatCompletionRequestBuilder {
+impl AiAgent {
     // request part
     pub fn build_request(&self, stream: bool) -> ChatCompletionRequest {
         let messages = if let Some(system_message) = &self.system_message {
             let mut messages = self.messages.clone();
-            messages.insert(0, system_message.clone());
+            messages.push(system_message.clone());
             messages
         } else {
             self.messages.clone()
@@ -146,17 +147,17 @@ impl ChatCompletionRequestBuilder {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn create(&self) -> anyhow::Result<Chat> {
+    pub async fn create(&self) -> ApiResult<Chat> {
         let api_key = OPENAI_API_KEY.read().unwrap();
         let req = reqwest::Client::new()
             .post("https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(false))
-            .bearer_auth((*api_key).clone().unwrap())
+            .bearer_auth(api_key.clone().expect("no api key found"))
             .header("Content-Type", "application/json")
             .send()
-            .await?;
+            .await.unwrap();
 
-        let res = req.text().await?;
+        let res = req.text().await.unwrap();
 
         serialize(&res)
     }
@@ -181,9 +182,9 @@ impl ChatCompletionRequestBuilder {
 
     // builder part
 
-    pub fn new(model: &str) -> Self {
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
-            model: model.to_string(),
+            model: model.into(),
             system_message: None,
             messages: vec![],
             functions: None,
@@ -200,9 +201,9 @@ impl ChatCompletionRequestBuilder {
         }
     }
 
-    pub fn with_system_message(mut self, system_message: &str) -> Self {
+    pub fn with_system_message<'a>(mut self, system_message: impl Into<&'a str>) -> Self {
         self.system_message =
-            Some(Message::new("system").with_content(system_message));
+            Some(Message::new("system").with_content(system_message.into()));
         self
     }
 
@@ -221,8 +222,8 @@ impl ChatCompletionRequestBuilder {
         self
     }
 
-    pub fn with_function_call(mut self, function_call: &str) -> Self {
-        self.function_call = Some(function_call.to_string());
+    pub fn with_function_call(mut self, function_call: impl Into<String>) -> Self {
+        self.function_call = Some(function_call.into());
         self
     }
 
@@ -236,7 +237,7 @@ impl ChatCompletionRequestBuilder {
         self
     }
 
-    pub fn with_n(mut self, n: i64) -> Self {
+    pub fn with_n(mut self, n: u64) -> Self {
         self.n = Some(n);
         self
     }
@@ -246,7 +247,7 @@ impl ChatCompletionRequestBuilder {
         self
     }
 
-    pub fn with_max_tokens(mut self, max_tokens: i64) -> Self {
+    pub fn with_max_tokens(mut self, max_tokens: u64) -> Self {
         self.max_tokens = Some(max_tokens);
         self
     }
@@ -266,8 +267,8 @@ impl ChatCompletionRequestBuilder {
         self
     }
 
-    pub fn with_user(mut self, user: String) -> Self {
-        self.user = Some(user);
+    pub fn with_user(mut self, user: impl Into<String>) -> Self {
+        self.user = Some(user.into());
         self
     }
 
@@ -289,11 +290,11 @@ impl ChatCompletionRequestBuilder {
         }
     }
 
-    pub fn push_stop(&mut self, stop: String) {
+    pub fn push_stop(&mut self, stop: impl Into<String>) {
         if let Some(stops) = &mut self.stop {
-            stops.push(stop);
+            stops.push(stop.into());
         } else {
-            self.stop = Some(vec![stop]);
+            self.stop = Some(vec![stop.into()]);
         }
     }
 
@@ -308,7 +309,7 @@ impl ChatCompletionRequestBuilder {
     }
 }
 
-pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> anyhow::Result<T> {
+pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> ApiResult<T> {
     debug!("response: {}", res);
     match serde_json::from_str::<T>(res) {
         Ok(chat) => Ok(chat),
