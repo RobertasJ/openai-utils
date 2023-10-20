@@ -2,6 +2,9 @@
 name = "openai-utils"
 version = "0.1.0"
 edition = "2021"
+description = "utilities for using the openai api"
+license = "MIT"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
