@@ -152,36 +152,3 @@ pub fn api_key(api_key: String) {
 pub struct NoArgs {
     _unused: (),
 }
-
-pub trait Agent: Default {
-    type Input;
-    type Output;
-
-    async fn compute(&mut self, input: Self::Input) -> Self::Output;
-}
-
-pub trait Memoized {
-    type Output: Clone;
-
-    fn field(&mut self) -> Option<&mut Self::Output>;
-}
-
-pub trait MemoizedAgent: Memoized {
-    type Input;
-
-    async fn compute(&mut self, input: Self::Input) -> Self::Output {
-        if let Some(memo) = self.field() {
-            memo.clone()
-        } else {
-            let res = self.computation(input).await;
-
-            if let Some(memo) = self.field() {
-                *memo = res.clone();
-            }
-
-            res
-        }
-    }
-
-    async fn computation(&mut self, input: Self::Input) -> Self::Output;
-}
