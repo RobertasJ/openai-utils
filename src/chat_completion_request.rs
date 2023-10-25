@@ -1,7 +1,7 @@
 use crate::chat_completion_delta::forward_stream;
 use crate::error::ApiErrorWrapper;
 use crate::error::ApiResult;
-use crate::DeltaReceiver;
+use crate::{calculate_tokens, DeltaReceiver};
 use crate::{Chat, OPENAI_API_KEY};
 use crate::{Function, Message};
 use log::debug;
@@ -177,7 +177,11 @@ impl AiAgent {
             .eventsource()?;
         tokio::spawn(forward_stream(es, tx));
 
-        Ok(DeltaReceiver::from(rx, self))
+        let usage = self.build_request(true).messages.into_iter().fold(0, |acc, m| {
+            acc + calculate_tokens(m)
+        });
+
+        Ok(DeltaReceiver::from(rx, self, usage))
     }
 
     // builder part

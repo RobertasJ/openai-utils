@@ -137,9 +137,9 @@ pub struct FunctionCallDelta {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
-    pub prompt_tokens: i64,
-    pub completion_tokens: i64,
-    pub total_tokens: i64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
 }
 
 pub fn api_key(api_key: String) {
@@ -151,4 +151,10 @@ pub fn api_key(api_key: String) {
 #[schemars(description = "this function takes no arguments")]
 pub struct NoArgs {
     _unused: (),
+}
+
+pub fn calculate_tokens(message: Message) -> usize {
+    let bpe = tiktoken_rs::cl100k_base().unwrap();
+
+    bpe.encode_with_special_tokens(&message.content.unwrap_or_default()).len()
 }

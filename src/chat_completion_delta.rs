@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::{AiAgent, ChatDelta, Choice, FunctionCall, Message};
+use crate::{AiAgent, calculate_tokens, ChatDelta, Choice, FunctionCall, Message, Usage};
 use futures_util::StreamExt;
 use reqwest_eventsource::Event;
 
@@ -26,14 +26,16 @@ pub struct DeltaReceiver<'a> {
     pub receiver: Receiver<ApiResult<ChatDelta>>,
     pub builder: &'a AiAgent,
     pub deltas: Vec<ChatCompletionDelta>,
+    usage: usize,
 }
 
 impl<'a> DeltaReceiver<'a> {
-    pub fn from(receiver: Receiver<ApiResult<ChatDelta>>, builder: &'a AiAgent) -> Self {
+    pub fn from(receiver: Receiver<ApiResult<ChatDelta>>, builder: &'a AiAgent, usage: usize) -> Self {
         Self {
             receiver,
             builder,
             deltas: Vec::new(),
+            usage
         }
     }
 
@@ -170,6 +172,12 @@ impl<'a> DeltaReceiver<'a> {
             })
             .collect();
 
+        let usage = Usage {
+            prompt_tokens: self.usage as u64,
+            completion_tokens: choices.iter().fold(0, |acc, c| acc + calculate_tokens(c.message.clone())) as u64,
+            total_tokens: choices.iter().fold(0, |acc, c| acc + calculate_tokens(c.message.clone())) as u64 + self.usage as u64,
+        };
+
         Ok(Chat {
             id: self.deltas[0].id.clone(),
             object: self.deltas[0].object.clone(),
@@ -178,12 +186,7 @@ impl<'a> DeltaReceiver<'a> {
             //will be computed
             choices,
             // approximation
-            usage: crate::Usage {
-                // unknown
-                prompt_tokens: 0,
-                completion_tokens: self.deltas.len() as i64,
-                total_tokens: self.deltas.len() as i64,
-            },
+            usage,
         })
     }
 }
