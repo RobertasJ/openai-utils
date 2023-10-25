@@ -1,7 +1,7 @@
-use crate::error::ApiResult;
 use crate::chat_completion_delta::forward_stream;
-use crate::DeltaReceiver;
 use crate::error::ApiErrorWrapper;
+use crate::error::ApiResult;
+use crate::DeltaReceiver;
 use crate::{Chat, OPENAI_API_KEY};
 use crate::{Function, Message};
 use log::debug;
@@ -155,7 +155,8 @@ impl AiAgent {
             .bearer_auth(api_key.clone().expect("no api key found"))
             .header("Content-Type", "application/json")
             .send()
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let res = req.text().await.unwrap();
 
@@ -175,8 +176,7 @@ impl AiAgent {
             .bearer_auth(api_key)
             .eventsource()?;
         tokio::spawn(forward_stream(es, tx));
-        
-        
+
         Ok(DeltaReceiver::from(rx, self))
     }
 
@@ -202,8 +202,7 @@ impl AiAgent {
     }
 
     pub fn with_system_message<'a>(mut self, system_message: impl Into<&'a str>) -> Self {
-        self.system_message =
-            Some(Message::new("system").with_content(system_message.into()));
+        self.system_message = Some(Message::new("system").with_content(system_message.into()));
         self
     }
 
@@ -320,5 +319,3 @@ pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> ApiResult<T> {
         }
     }
 }
-
-

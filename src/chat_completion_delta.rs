@@ -2,16 +2,16 @@
 
 use std::collections::HashMap;
 
-use crate::{ChatDelta, AiAgent, Choice, FunctionCall, Message};
+use crate::{AiAgent, ChatDelta, Choice, FunctionCall, Message};
 use futures_util::StreamExt;
 use reqwest_eventsource::Event;
 
 use crate::chat_completion_request::serialize;
+use crate::error::ApiResult;
 use crate::{Chat, ChoiceDelta};
 use reqwest_eventsource::EventSource;
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::error::ApiResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionDelta {
@@ -29,19 +29,18 @@ pub struct DeltaReceiver<'a> {
 }
 
 impl<'a> DeltaReceiver<'a> {
-    pub fn from(
-        receiver: Receiver<ApiResult<ChatDelta>>,
-        builder: &'a AiAgent,
-    ) -> Self {
+    pub fn from(receiver: Receiver<ApiResult<ChatDelta>>, builder: &'a AiAgent) -> Self {
         Self {
             receiver,
             builder,
             deltas: Vec::new(),
         }
     }
-    
-    pub async fn receive(&mut self, choice_index: i64) -> anyhow::Result<Option<ChatCompletionDelta>> {
-        
+
+    pub async fn receive(
+        &mut self,
+        choice_index: i64,
+    ) -> anyhow::Result<Option<ChatCompletionDelta>> {
         loop {
             if let Some(delta) = self.receiver.recv().await {
                 let delta = delta?;
@@ -57,7 +56,7 @@ impl<'a> DeltaReceiver<'a> {
             }
         }
     }
-    
+
     pub async fn receive_content(&mut self, choice_index: i64) -> anyhow::Result<Option<String>> {
         loop {
             if let Some(delta) = self.receiver.recv().await {
@@ -76,7 +75,7 @@ impl<'a> DeltaReceiver<'a> {
             }
         }
     }
-    
+
     pub async fn receive_all(&mut self) -> anyhow::Result<Option<ChatCompletionDelta>> {
         if let Some(delta) = self.receiver.recv().await {
             let delta = delta?;

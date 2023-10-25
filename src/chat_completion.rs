@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{Choice, Usage};
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletion {
@@ -12,4 +12,3 @@ pub struct ChatCompletion {
     pub choices: Vec<Choice>,
     pub usage: Usage,
 }
-

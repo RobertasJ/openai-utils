@@ -23,8 +23,8 @@ use serde_json::Value;
 pub use {
     chat_completion::ChatCompletion as Chat,
     chat_completion_delta::ChatCompletionDelta as ChatDelta, chat_completion_delta::DeltaReceiver,
+    chat_completion_request::AiAgent,
     chat_completion_request::ChatCompletionRequest as ChatRequest,
-    chat_completion_request::AiAgent as AiAgent,
 };
 
 lazy_static! {
