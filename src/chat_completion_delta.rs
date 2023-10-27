@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::{AiAgent, calculate_tokens, ChatDelta, Choice, FunctionCall, Message, Usage};
+use crate::{AiAgent, calculate_message_tokens, ChatDelta, Choice, FunctionCall, Message, Usage};
 use futures_util::StreamExt;
 use reqwest_eventsource::Event;
 
@@ -174,8 +174,8 @@ impl<'a> DeltaReceiver<'a> {
 
         let usage = Usage {
             prompt_tokens: self.usage as u64,
-            completion_tokens: choices.iter().fold(0, |acc, c| acc + calculate_tokens(c.message.clone())) as u64,
-            total_tokens: choices.iter().fold(0, |acc, c| acc + calculate_tokens(c.message.clone())) as u64 + self.usage as u64,
+            completion_tokens: choices.iter().fold(0, |acc, c| acc + calculate_message_tokens(c.message.clone())) as u64,
+            total_tokens: choices.iter().fold(0, |acc, c| acc + calculate_message_tokens(c.message.clone())) as u64 + self.usage as u64,
         };
 
         Ok(Chat {

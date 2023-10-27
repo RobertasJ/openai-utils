@@ -2,7 +2,6 @@
 #![feature(type_name_of_val)]
 #![feature(associated_type_defaults)]
 #![feature(async_fn_in_trait)]
-#![allow(async_fn_in_trait)]
 
 mod chat_completion;
 mod chat_completion_delta;
@@ -153,8 +152,14 @@ pub struct NoArgs {
     _unused: (),
 }
 
-pub fn calculate_tokens(message: Message) -> usize {
+pub fn calculate_message_tokens(message: Message) -> usize {
     let bpe = tiktoken_rs::cl100k_base().unwrap();
 
     bpe.encode_with_special_tokens(&message.content.unwrap_or_default()).len()
+}
+
+pub fn calculate_tokens(s: &str) -> usize {
+    let bpe = tiktoken_rs::cl100k_base().unwrap();
+
+    bpe.encode_with_special_tokens(s).len()
 }
