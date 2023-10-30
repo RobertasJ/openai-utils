@@ -152,10 +152,10 @@ pub struct NoArgs {
     _unused: (),
 }
 
-pub fn calculate_message_tokens(message: Message) -> usize {
+pub fn calculate_message_tokens(message: &Message) -> usize {
     let bpe = tiktoken_rs::cl100k_base().unwrap();
 
-    bpe.encode_with_special_tokens(&message.content.unwrap_or_default()).len()
+    bpe.encode_with_special_tokens(&message.content.as_ref().unwrap_or(&"".to_string())).len()
 }
 
 pub fn calculate_tokens(s: &str) -> usize {

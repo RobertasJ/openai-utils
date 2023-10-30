@@ -178,7 +178,7 @@ impl AiAgent {
         tokio::spawn(forward_stream(es, tx));
 
         let usage = self.build_request(true).messages.into_iter().fold(3, |acc, m| {
-            acc + calculate_message_tokens(m) + 4
+            acc + calculate_message_tokens(&m) + 4
         });
 
         Ok(DeltaReceiver::from(rx, self, usage))
