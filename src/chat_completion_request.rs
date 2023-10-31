@@ -146,13 +146,14 @@ impl AiAgent {
         }
     }
 
-    #[allow(clippy::await_holding_lock)]
     pub async fn create(&self) -> ApiResult<Chat> {
-        let api_key = OPENAI_API_KEY.read().unwrap();
+        let api_key;
+
+        { api_key = OPENAI_API_KEY.read().unwrap().clone().unwrap(); }
         let req = reqwest::Client::new()
             .post("https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(false))
-            .bearer_auth(api_key.clone().expect("no api key found"))
+            .bearer_auth(api_key)
             .header("Content-Type", "application/json")
             .send()
             .await
@@ -160,13 +161,17 @@ impl AiAgent {
 
         let res = req.text().await.unwrap();
 
-        serialize(&res)
+        let res = serialize(&res);
+
+        debug!("response: {res}");
+
+        res
     }
 
-    #[allow(clippy::await_holding_lock)]
     pub fn create_stream(&self) -> anyhow::Result<DeltaReceiver> {
-        let lock = OPENAI_API_KEY.read().unwrap();
-        let api_key = (*lock).clone().unwrap();
+        let api_key;
+
+        { api_key = OPENAI_API_KEY.read().unwrap().clone().unwrap(); }
 
         let (tx, rx) = mpsc::channel(64);
 
@@ -313,7 +318,6 @@ impl AiAgent {
 }
 
 pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> ApiResult<T> {
-    debug!("response: {}", res);
     match serde_json::from_str::<T>(res) {
         Ok(chat) => Ok(chat),
         Err(_) => {
