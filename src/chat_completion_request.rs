@@ -163,7 +163,7 @@ impl AiAgent {
 
         let res = serialize(&res);
 
-        debug!("response: {res}");
+        debug!("response: {res:#?}");
 
         res
     }

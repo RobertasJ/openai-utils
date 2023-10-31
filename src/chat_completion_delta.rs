@@ -190,7 +190,7 @@ impl<'a> DeltaReceiver<'a> {
             usage,
         });
 
-        debug!("response: {res}");
+        debug!("response: {res:#?}");
 
         res
     }
