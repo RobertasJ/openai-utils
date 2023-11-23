@@ -7,7 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 pub struct ChatCompletion {
     pub id: String,
     pub object: String,
-    pub created: i64,
+    pub created: u64,
     pub model: String,
     pub choices: Vec<Choice>,
     pub usage: Usage,

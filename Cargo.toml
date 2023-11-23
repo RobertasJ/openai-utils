@@ -23,3 +23,4 @@ serde_derive = "1.0.188"
 serde_json = "1.0.107"
 tiktoken-rs = "0.5.6"
 tokio = { version = "1.32.0", features = ["full"] }
+thiserror = "1.0.48"

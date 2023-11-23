@@ -84,7 +84,7 @@ impl Function {
     pub fn from<FunctionArgs, Func, T>(function: Func) -> Self
     where
         FunctionArgs: JsonSchema,
-        Func: Fn(FunctionArgs) -> T + 'static,
+        Func: FnMut(FunctionArgs) -> T + 'static,
     {
         let schema = schema_for!(FunctionArgs);
         let fn_type_name = type_name_of_val(&function);

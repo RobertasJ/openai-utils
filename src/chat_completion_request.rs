@@ -1,10 +1,10 @@
 use crate::chat_completion_delta::forward_stream;
-use crate::error::ApiErrorWrapper;
-use crate::error::ApiResult;
+use crate::error::{InternalError, OpenAIError};
+use crate::error::UtilsResult;
 use crate::{calculate_message_tokens, DeltaReceiver};
 use crate::{Chat, OPENAI_API_KEY};
 use crate::{Function, Message};
-use log::debug;
+use log::error;
 use reqwest::Method;
 use reqwest_eventsource::RequestBuilderExt;
 use schemars::JsonSchema;
@@ -48,7 +48,7 @@ pub struct ChatCompletionRequest {
     pub frequency_penalty: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logit_bias: Option<HashMap<String, f64>>,
+    pub logit_bias: Option<HashMap<u64, f64>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
@@ -111,7 +111,7 @@ pub struct AiAgent {
     pub frequency_penalty: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logit_bias: Option<HashMap<String, f64>>,
+    pub logit_bias: Option<HashMap<u64, f64>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
@@ -146,48 +146,52 @@ impl AiAgent {
         }
     }
 
-    pub async fn create(&self) -> ApiResult<Chat> {
-        let api_key;
-
-        { api_key = OPENAI_API_KEY.read().unwrap().clone().unwrap(); }
+    pub async fn create(&self) -> UtilsResult<Chat> {
+        let api_key = OPENAI_API_KEY.read().expect("failed to get lock").clone().ok_or_else(|| InternalError::ConfigurationError("API key not set".to_string()))?;
         let req = reqwest::Client::new()
             .post("https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(false))
             .bearer_auth(api_key)
             .header("Content-Type", "application/json")
             .send()
-            .await
-            .unwrap();
+            .await.map_err(|e| InternalError::RequestBuildError(e))?;
 
-        let res = req.text().await.unwrap();
-
-        let res = serialize(&res);
-
-        debug!("response: {res:#?}");
-
-        res
+        let res = req.text().await.map_err(|e| InternalError::RequestBuildError(e))?;
+        serialize(&res)
     }
 
-    pub fn create_stream(&self) -> anyhow::Result<DeltaReceiver> {
-        let api_key;
-
-        { api_key = OPENAI_API_KEY.read().unwrap().clone().unwrap(); }
+    pub async fn create_stream(&self) -> UtilsResult<DeltaReceiver> {
+        let api_key = OPENAI_API_KEY.read()
+            .expect("failed to get lock")
+            .as_ref()
+            .ok_or_else(|| InternalError::ConfigurationError("API key not set".to_string()))?
+            .to_string();
 
         let (tx, rx) = mpsc::channel(64);
 
+        // Building the request using the reqwest::Client and then converting it to an EventSource.
         let es = reqwest::Client::new()
             .request(Method::POST, "https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(true))
             .bearer_auth(api_key)
-            .eventsource()?;
-        tokio::spawn(forward_stream(es, tx));
+            .header("Content-Type", "application/json")
+            .eventsource() // Using `.eventsource()` to directly create EventSource.
+            .expect("cannot create eventsource? shouldn't happen i think.");
 
-        let usage = self.build_request(true).messages.into_iter().fold(3, |acc, m| {
-            acc + calculate_message_tokens(&m) + 4
+        tokio::spawn(async move {
+            if let Err(e) = forward_stream(es, tx).await {
+                // Log the error or handle it as needed.
+                error!("Error in forward_stream: {}", e);
+            }
+        });
+
+        let usage = self.build_request(true).messages.iter().fold(3, |acc, m| {
+            acc + calculate_message_tokens(m) + 4
         });
 
         Ok(DeltaReceiver::from(rx, self, usage))
     }
+
 
     // builder part
 
@@ -217,16 +221,6 @@ impl AiAgent {
 
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = messages;
-        self
-    }
-
-    pub fn with_functions<FunctionArgs, Func>(mut self, functions: Vec<Func>) -> Self
-    where
-        FunctionArgs: JsonSchema,
-        Func: Fn(FunctionArgs) + 'static,
-    {
-        let functions = functions.into_iter().map(|f| Function::from(f)).collect();
-        self.functions = Some(functions);
         self
     }
 
@@ -270,7 +264,7 @@ impl AiAgent {
         self
     }
 
-    pub fn with_logit_bias(mut self, logit_bias: HashMap<String, f64>) -> Self {
+    pub fn with_logit_bias(mut self, logit_bias: HashMap<u64, f64>) -> Self {
         self.logit_bias = Some(logit_bias);
         self
     }
@@ -286,10 +280,10 @@ impl AiAgent {
         self.messages.push(message);
     }
 
-    pub fn push_function<FunctionArgs, Func>(&mut self, function: Func)
+    pub fn push_function<FunctionArgs, Func, T>(&mut self, function: Func)
     where
         FunctionArgs: JsonSchema,
-        Func: Fn(FunctionArgs) + 'static,
+        Func: FnMut(FunctionArgs) -> T + 'static,
     {
         if let Some(functions) = &mut self.functions {
             functions.push(Function::from(function));
@@ -306,7 +300,7 @@ impl AiAgent {
         }
     }
 
-    pub fn push_logit_bias(&mut self, logit_bias: (String, f64)) {
+    pub fn push_logit_bias(&mut self, logit_bias: (u64, f64)) {
         if let Some(logit_biases) = &mut self.logit_bias {
             logit_biases.insert(logit_bias.0, logit_bias.1);
         } else {
@@ -317,12 +311,17 @@ impl AiAgent {
     }
 }
 
-pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> ApiResult<T> {
+pub fn serialize<'a, T: Deserialize<'a>>(res: &'a str) -> UtilsResult<T> {
     match serde_json::from_str::<T>(res) {
         Ok(chat) => Ok(chat),
         Err(_) => {
+            #[derive(Deserialize)]
+            struct TempWrapper {
+                error: OpenAIError
+            }
+
             let err =
-                serde_json::from_str::<ApiErrorWrapper>(res).unwrap_or_else(|_| panic!("{}", res));
+                serde_json::from_str::<TempWrapper>(res).unwrap_or_else(|_| panic!("{}", res));
             Err(err.error.into())
         }
     }

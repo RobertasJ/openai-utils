@@ -1,36 +1,44 @@
-use serde_derive::{Deserialize, Serialize};
+use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
-pub type ApiResult<T> = Result<T, ApiError>;
+// Define an enum for internal errors.
+#[derive(Debug, Error)]
+pub enum InternalError {
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ApiErrorWrapper {
-    pub error: ApiError,
+    #[error("Request build error: {0}")]
+    RequestBuildError(#[from] reqwest::Error),
+
+    #[error("Event source error: {0}")]
+    EventSourceError(#[from] reqwest_eventsource::Error),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ApiError {
-    pub message: String,
-    #[serde(rename = "type")]
-    pub error_type: String,
-    pub param: Option<String>,
-    pub code: Option<String>,
+// Define an enum for OpenAI API errors.
+#[derive(Debug, Error, Clone, Deserialize, Serialize)]
+pub enum OpenAIError {
+    #[error("OpenAI API error: {message}")]
+    ApiError {
+        message: String,
+        #[serde(rename = "type")]
+        error_type: String,
+        param: Option<String>,
+        code: Option<String>,
+    },
 }
 
-impl ApiError {
-    fn new(message: String, error_type: String) -> ApiError {
-        ApiError {
-            message,
-            error_type,
-            param: None,
-            code: None,
-        }
-    }
+// Define a wrapper enum for all types of errors.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Internal error: {0}")]
+    Internal(#[from] InternalError),
+
+    #[error("OpenAI API error: {0}")]
+    OpenAI(#[from] OpenAIError),
 }
 
-impl std::fmt::Display for ApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for ApiError {}
+// Convenience type alias for `Result` with our custom error type.
+pub type UtilsResult<T> = Result<T, Error>;

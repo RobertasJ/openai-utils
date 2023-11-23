@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use crate::{AiAgent, calculate_message_tokens, ChatDelta, Choice, FunctionCall, Message, Usage};
 use futures_util::StreamExt;
-use log::debug;
+use log::trace;
 use reqwest_eventsource::Event;
 
 use crate::chat_completion_request::serialize;
-use crate::error::ApiResult;
+use crate::error::UtilsResult;
 use crate::{Chat, ChoiceDelta};
 use reqwest_eventsource::EventSource;
 use serde_derive::{Deserialize, Serialize};
@@ -18,20 +18,20 @@ use tokio::sync::mpsc::{Receiver, Sender};
 pub struct ChatCompletionDelta {
     pub id: String,
     pub object: String,
-    pub created: i64,
+    pub created: u64,
     pub model: String,
     pub choices: Vec<ChoiceDelta>,
 }
 
 pub struct DeltaReceiver<'a> {
-    pub receiver: Receiver<ApiResult<ChatDelta>>,
+    pub receiver: Receiver<UtilsResult<ChatDelta>>,
     pub builder: &'a AiAgent,
     pub deltas: Vec<ChatCompletionDelta>,
     usage: usize,
 }
 
 impl<'a> DeltaReceiver<'a> {
-    pub fn from(receiver: Receiver<ApiResult<ChatDelta>>, builder: &'a AiAgent, usage: usize) -> Self {
+    pub fn from(receiver: Receiver<UtilsResult<ChatDelta>>, builder: &'a AiAgent, usage: usize) -> Self {
         Self {
             receiver,
             builder,
@@ -190,7 +190,7 @@ impl<'a> DeltaReceiver<'a> {
             usage,
         });
 
-        debug!("response: {res:#?}");
+        trace!("response: {res:#?}");
 
         res
     }
@@ -198,17 +198,12 @@ impl<'a> DeltaReceiver<'a> {
 
 pub async fn forward_stream(
     mut es: EventSource,
-    tx: Sender<ApiResult<ChatDelta>>,
+    tx: Sender<UtilsResult<ChatDelta>>,
 ) -> anyhow::Result<()> {
     // Process each event from the EventSource
     while let Some(event) = es.next().await {
         // Handle errors in the event
-        let event = match event {
-            Ok(event) => event,
-            Err(_err) => {
-                panic!("{_err:#?}")
-            }
-        };
+        let event = event?;
 
         // Process Message events
         if let Event::Message(message) = event {
