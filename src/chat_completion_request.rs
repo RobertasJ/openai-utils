@@ -283,7 +283,7 @@ impl AiAgent {
     pub fn push_function<FunctionArgs, Func, T>(&mut self, function: Func)
     where
         FunctionArgs: JsonSchema,
-        Func: FnMut(FunctionArgs) -> T + 'static,
+        Func: FnMut(FunctionArgs) -> T,
     {
         if let Some(functions) = &mut self.functions {
             functions.push(Function::from(function));
