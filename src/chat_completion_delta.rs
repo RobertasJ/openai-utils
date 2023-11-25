@@ -8,7 +8,7 @@ use log::trace;
 use reqwest_eventsource::Event;
 
 use crate::chat_completion_request::serialize;
-use crate::error::UtilsResult;
+use crate::error::{InternalError, UtilsResult};
 use crate::{Chat, ChoiceDelta};
 use reqwest_eventsource::EventSource;
 use serde_derive::{Deserialize, Serialize};
@@ -95,6 +95,10 @@ impl<'a> DeltaReceiver<'a> {
             if delta.choices[0].finish_reason.is_some() {
                 break;
             }
+        }
+
+        if self.deltas.len() == 0 {
+            InternalError::NoDeltasReceived
         }
 
         let choice_list: Vec<ChoiceDelta> = self
