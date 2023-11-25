@@ -1,6 +1,6 @@
 [package]
 name = "openai-utils"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 description = "utilities for using the openai api"
 license = "MIT"

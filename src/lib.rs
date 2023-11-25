@@ -81,7 +81,7 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn from<FunctionArgs, Func, T>(function: Func) -> Self
+    pub fn from<FunctionArgs, Func, T>(function: &Func) -> Self
     where
         FunctionArgs: JsonSchema,
         Func: FnMut(FunctionArgs) -> T,

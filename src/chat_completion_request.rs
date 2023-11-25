@@ -280,7 +280,7 @@ impl AiAgent {
         self.messages.push(message);
     }
 
-    pub fn push_function<FunctionArgs, Func, T>(&mut self, function: Func)
+    pub fn push_function<FunctionArgs, Func, T>(&mut self, function: &Func)
     where
         FunctionArgs: JsonSchema,
         Func: FnMut(FunctionArgs) -> T,
