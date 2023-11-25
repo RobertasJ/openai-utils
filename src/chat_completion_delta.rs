@@ -98,7 +98,7 @@ impl<'a> DeltaReceiver<'a> {
         }
 
         if self.deltas.len() == 0 {
-            InternalError::NoDeltasReceived
+            Err(InternalError::NoDeltasReceived)?
         }
 
         let choice_list: Vec<ChoiceDelta> = self
