@@ -4,12 +4,13 @@ use crate::error::UtilsResult;
 use crate::{calculate_message_tokens, DeltaReceiver};
 use crate::{Chat, OPENAI_API_KEY};
 use crate::{Function, Message};
-use log::error;
+use log::{error, trace};
 use reqwest::Method;
 use reqwest_eventsource::RequestBuilderExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::{collections::HashMap, vec};
+use serde_json::to_string_pretty;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -148,6 +149,8 @@ impl AiAgent {
 
     pub async fn create(&self) -> UtilsResult<Chat> {
         let api_key = OPENAI_API_KEY.read().expect("failed to get lock").clone().ok_or_else(|| InternalError::ConfigurationError("API key not set".to_string()))?;
+        
+        trace!("request body: {}", to_string_pretty(&self.build_request(false)).unwrap());
         let req = reqwest::Client::new()
             .post("https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(false))
@@ -168,19 +171,17 @@ impl AiAgent {
             .to_string();
 
         let (tx, rx) = mpsc::channel(64);
-
-        // Building the request using the reqwest::Client and then converting it to an EventSource.
+        trace!("request body: {}", to_string_pretty(&self.build_request(true)).unwrap());
         let es = reqwest::Client::new()
             .request(Method::POST, "https://api.openai.com/v1/chat/completions")
             .json(&self.build_request(true))
             .bearer_auth(api_key)
             .header("Content-Type", "application/json")
-            .eventsource() // Using `.eventsource()` to directly create EventSource.
+            .eventsource()
             .expect("cannot create eventsource? shouldn't happen i think.");
 
         tokio::spawn(async move {
             if let Err(e) = forward_stream(es, tx).await {
-                // Log the error or handle it as needed.
                 error!("Error in forward_stream: {}", e);
             }
         });
