@@ -123,7 +123,7 @@ impl AiAgent {
     pub fn build_request(&self, stream: bool) -> ChatCompletionRequest {
         let messages = if let Some(system_message) = &self.system_message {
             let mut messages = self.messages.clone();
-            messages.push(system_message.clone());
+            messages.insert(0, system_message.clone());
             messages
         } else {
             self.messages.clone()
