@@ -281,15 +281,15 @@ impl AiAgent {
         self.messages.push(message);
     }
 
-    pub fn push_function<FunctionArgs, Func, T>(&mut self, function: &Func)
+    pub fn push_function<FunctionArgs, Func, T>(&mut self, function: &Func, function_name: &str)
     where
         FunctionArgs: JsonSchema,
         Func: FnMut(FunctionArgs) -> T,
     {
         if let Some(functions) = &mut self.functions {
-            functions.push(Function::from(function));
+            functions.push(Function::from(function, function_name));
         } else {
-            self.functions = Some(vec![Function::from(function)]);
+            self.functions = Some(vec![Function::from(function, function_name)]);
         }
     }
 

@@ -81,19 +81,16 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn from<FunctionArgs, Func, T>(function: &Func) -> Self
+    pub fn from<FunctionArgs, Func, T>(function: &Func, function_name: &str) -> Self
     where
         FunctionArgs: JsonSchema,
         Func: FnMut(FunctionArgs) -> T,
     {
         let schema = schema_for!(FunctionArgs);
-        let fn_type_name = type_name_of_val(&function);
         let parameters = serde_json::to_value(schema)
-            .unwrap_or_else(|_| panic!("Failed to serialize schema for function {}", fn_type_name));
-
-        let fn_name = fn_type_name.split("::").last().unwrap_or("");
+            .unwrap_or_else(|_| panic!("Failed to serialize schema for function {}", function_name));
         Self {
-            name: fn_name.to_string(),
+            name: function_name.to_string(),
             description: match parameters.get("description") {
                 Some(Value::String(s)) => Some(s.clone()),
                 _ => None,
